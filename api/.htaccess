@@ -1,0 +1,2 @@
+RewriteEngine on
+RewriteRule ^([a-z0-9_\-\/]+)?/?$ index.php?chpu=$1 [L,QSA]

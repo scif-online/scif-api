@@ -1,0 +1,623 @@
+openapi: 3.0.3
+info:
+  title: СКИФ API
+  description: |
+    REST API для интеграции с системой складского учёта СКИФ.
+    
+    ## Настройки API
+    
+    Для активации API на вашем сайте загрузите скрипты на ваш сайт в папку /api/ и 
+    внесите в файл настроек wn_settings.php следующий код:
+    
+    ```php
+    // API СКИФ
+    $api=array('tokens'=>array('задайте ваш токен'=>array(
+    'price'=>'n.price'.SCIF_CATALOG_PRICE, // продажная цена
+    'sql_store'=>SQL_STORE, // остаток на складе
+    'invoice'=>$wn_catalog_invoice // данные для создания заказа
+    )));
+    ```
+
+    ## Аутентификация
+
+    API поддерживает два способа передачи токена:
+
+    **1. Заголовок Authorization:** (рекомендуется)
+    ```
+    Authorization: ваш-токен
+    ```
+
+    **2. GET-параметр token:**
+    ```
+    GET /api/noms/stock/?token=ваш-токен
+    ```
+
+    ## Формат запросов
+
+    Параметры передаются в теле запроса как JSON (`Content-Type: application/json`).
+
+    ## Формат ответов
+
+    Все ответы возвращаются в формате JSON. В случае ошибки возвращается:
+    ```json
+    { "error": "Описание ошибки" }
+    ```
+
+    ## Тестовый сервер
+  
+    Вы можете протестировать API на тестовой базе:
+  
+      - **Адрес API:** `https://demo.webnice.biz/api/`
+      - **Вход в базу:** `https://demo.webnice.biz/scif/`
+      - **Токен:** `demo`
+  
+    ## Расширение API
+  
+    В данной документации представлены лишь примеры работы с API. 
+    Фактический набор функционала определяется индивидуально для каждого клиента по его запросу.
+
+  version: "1.0"
+  contact:
+    name: Поддержка СКИФ
+    url: https://www.webnice.biz/msg/
+    email: biz@webnice.biz
+
+servers:
+  - url: https://demo.webnice.biz/api/
+    description: Тестовый сервер
+
+security:
+  - ApiKeyHeader: []
+  - ApiKeyQuery: []
+
+tags:
+  - name: Товары
+    description: Поиск товаров, остатки, категории
+  - name: Документы
+    description: Заказы покупателей — создание, редактирование, просмотр
+  - name: Контрагенты
+    description: Информация о клиентах
+
+paths:
+
+  # ───────────────────── ТОВАРЫ ─────────────────────
+
+  /noms/search/:
+    post:
+      tags: [Товары]
+      summary: Поиск товаров
+      description: |
+        Поиск товаров по названию. Возвращает до 100 позиций с остатком > 0.
+        Поиск работает по названию товара и названию категории.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [query]
+              properties:
+                query:
+                  type: string
+                  description: Текст поискового запроса (до 30 символов)
+                  example: "цемент"
+            example:
+              query: "цемент"
+      responses:
+        "200":
+          description: Список найденных товаров
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductList"
+              example:
+                count: 2
+                items:
+                  "101":
+                    id: 101
+                    name: "Цемент М400 50кг"
+                    price: 450.00
+                    stock: 120.0
+                    image: "https://example.com/img/101.jpg"
+                    url: "https://example.com/catalog/product/cement-m400/"
+                  "102":
+                    id: 102
+                    name: "Цемент М500 50кг"
+                    price: 520.00
+                    stock: 85.0
+                    image: ""
+                    url: "https://example.com/catalog/product/cement-m500/"
+        "200-error":
+          description: Ошибка (всегда HTTP 200, признак — поле error)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /noms/stock/:
+    post:
+      tags: [Товары]
+      summary: Все товары в наличии
+      description: |
+        Возвращает полный список товаров с остатком > 0.
+        Поддерживает пагинацию через параметры `limit` и `from`.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                limit:
+                  type: integer
+                  description: Количество записей на страницу
+                  example: 50
+                from:
+                  type: integer
+                  description: Смещение (offset) для пагинации
+                  example: 0
+            example:
+              limit: 50
+              from: 0
+      responses:
+        "200":
+          description: Список товаров в наличии
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StockList"
+              example:
+                count: 3
+                items:
+                  "101":
+                    id: 101
+                    name: "Цемент М400 50кг"
+                    barcode: "4607123456781"
+                    price: 450.00
+                    stock: 120.0
+
+  /noms/categories/:
+    post:
+      tags: [Товары]
+      summary: Список категорий
+      description: Возвращает полное дерево категорий товаров. Поле `parent` = 0 означает корневую категорию.
+      responses:
+        "200":
+          description: Список категорий
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count:
+                    type: integer
+                  items:
+                    type: object
+                    additionalProperties:
+                      $ref: "#/components/schemas/Category"
+              example:
+                count: 3
+                items:
+                  "1":
+                    id: 1
+                    name: "Стройматериалы"
+                    parent: 0
+                  "2":
+                    id: 2
+                    name: "Цемент"
+                    parent: 1
+                  "3":
+                    id: 3
+                    name: "Кирпич"
+                    parent: 1
+
+  # ───────────────────── ДОКУМЕНТЫ ─────────────────────
+
+  /doc/add/:
+    post:
+      tags: [Документы]
+      summary: Создать заказ
+      description: |
+        Создаёт новый заказ покупателя (тип 11) или документ продажи (тип 2).
+        При успехе возвращает ID документа в СКИФ, сумму и номер заказа.
+
+        Товары передаются в поле `items` — объект, где ключ это ID товара из методов `noms/search` или `noms/stock`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrderAdd"
+            example:
+              fio_from: "Иван Петров"
+              phone_from: "89991234567"
+              date_delivery: "15.06.2025"
+              address_delivery: "г. Москва, ул. Ленина, д. 1"
+              time_delivery: 10
+              items:
+                "101":
+                  quant: 2
+                "102":
+                  quant: 5
+      responses:
+        "200":
+          description: Заказ создан
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderCreated"
+              example:
+                id: 2
+                summa: 3650.00
+                order_num: 13
+
+  /doc/edit/{id}/:
+    post:
+      tags: [Документы]
+      summary: Добавить товары в заказ
+      description: |
+        Добавляет новые позиции в существующий заказ.
+        Редактировать можно только заказы типа "Заказ покупателя" (тип 11),
+        которые ещё не приняты в обработку (`finitem` = 0).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: ID документа в СКИФ
+          example: 2
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [client_id, items]
+              properties:
+                client_id:
+                  type: integer
+                  description: ID контрагента
+                  example: 4
+                items:
+                  $ref: "#/components/schemas/OrderItems"
+            example:
+              client_id: 4
+              items:
+                "103":
+                  quant: 1
+      responses:
+        "200":
+          description: Заказ обновлён
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                    description: ID документа
+                  summa:
+                    type: number
+                    description: Новая итоговая сумма заказа
+              example:
+                id: 2
+                summa: 4100.00
+
+  /doc/list/:
+    post:
+      tags: [Документы]
+      summary: Список заказов контрагента
+      description: |
+        Возвращает до 100 заказов указанного контрагента.
+        Можно фильтровать по статусу: 0 — Новый, -1 — все в работе.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [client_id]
+              properties:
+                client_id:
+                  type: integer
+                  description: ID контрагента
+                  example: 4
+                status:
+                  type: integer
+                  description: "Статус: 0 = Новый, -1 = все в работе (по умолчанию: -1)"
+                  example: -1
+            example:
+              client_id: 4
+              status: -1
+      responses:
+        "200":
+          description: Список заказов
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count:
+                    type: integer
+                  docs:
+                    type: object
+                    additionalProperties:
+                      $ref: "#/components/schemas/OrderSummary"
+              example:
+                count: 2
+                docs:
+                  "690":
+                    id: 690
+                    date: "2025-06-10 14:22:00"
+                    summa: 1200.00
+                    type: 11
+                    status: 0
+                    status_name: "Новый"
+                  "691":
+                    id: 691
+                    date: "2025-06-12 09:05:00"
+                    summa: 3650.00
+                    type: 11
+                    status: 5
+                    status_name: "Отгружен"
+
+  /doc/get/{id}/:
+    post:
+      tags: [Документы]
+      summary: Получить заказ по ID
+      description: Возвращает заголовок заказа и состав позиций. Требуется передать `client_id` в теле запроса.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: ID документа в СКИФ
+          example: 2
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [client_id]
+              properties:
+                client_id:
+                  type: integer
+                  description: ID контрагента
+                  example: 4
+            example:
+              client_id: 4
+      responses:
+        "200":
+          description: Данные заказа
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderDetail"
+              example:
+                id: 2
+                date: "2025-06-13 10:00:00"
+                summa: 3650.00
+                type: 11
+                status: 0
+                status_name: "Новый"
+                items:
+                  - id: 101
+                    quant: 2.0
+                    price: 450.00
+                  - id: 102
+                    quant: 5.0
+                    price: 550.00
+
+  # ───────────────────── КОНТРАГЕНТЫ ─────────────────────
+
+  /contrs/balance/{id}/:
+    get:
+      tags: [Контрагенты]
+      summary: Баланс контрагента
+      description: Возвращает текущий баланс (задолженность) контрагента по его ID.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: ID контрагента в СКИФ
+          example: 4
+      responses:
+        "200":
+          description: Баланс получен
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  balance:
+                    type: number
+                    description: Баланс контрагента (отрицательный = задолженность)
+              example:
+                balance: -5400.00
+
+# ─────────────────── КОМПОНЕНТЫ ───────────────────
+
+components:
+
+  securitySchemes:
+    ApiKeyHeader:
+      type: apiKey
+      in: header
+      name: Authorization
+      description: "Пример: `Authorization: demo`"
+    ApiKeyQuery:
+      type: apiKey
+      in: query
+      name: token
+      description: "Пример: `?token=demo`"
+
+  schemas:
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Описание ошибки
+      example:
+        error: "Некорректный API-токен"
+
+    Product:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        price:
+          type: number
+        stock:
+          type: number
+          description: Остаток на складе
+        image:
+          type: string
+          description: URL изображения (пустая строка если нет)
+        url:
+          type: string
+          description: URL страницы товара на сайте
+
+    StockProduct:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        barcode:
+          type: string
+        price:
+          type: number
+        stock:
+          type: number
+
+    ProductList:
+      type: object
+      properties:
+        count:
+          type: integer
+        items:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/Product"
+
+    StockList:
+      type: object
+      properties:
+        count:
+          type: integer
+        items:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/StockProduct"
+
+    Category:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        parent:
+          type: integer
+          description: ID родительской категории (0 = корневая)
+
+    OrderItems:
+      type: object
+      description: "Объект: ключ = ID товара, значение = объект с количеством"
+      additionalProperties:
+        type: object
+        properties:
+          quant:
+            type: number
+            description: Количество
+      example:
+        "101":
+          quant: 2
+        "102":
+          quant: 5
+
+    OrderAdd:
+      type: object
+      required: [items]
+      properties:
+        fio_from:
+          type: string
+          description: ФИО заказчика
+          example: "Иван Петров"
+        phone_from:
+          type: string
+          description: Телефон заказчика
+          example: "89991234567"
+        date_delivery:
+          type: string
+          description: Дата доставки в формате dd.mm.yyyy (не может быть в прошлом)
+          example: "15.06.2025"
+        address_delivery:
+          type: string
+          description: Адрес доставки
+          example: "г. Москва, ул. Ленина, д. 1"
+        client_id:
+          type: integer
+          description: ID контрагента в СКИФ (необязательно — если не передан, создаётся новый по phone_from)
+          example: 4
+        items:
+          $ref: "#/components/schemas/OrderItems"
+
+    OrderCreated:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: ID документа в СКИФ
+        summa:
+          type: number
+          description: Сумма заказа
+        order_num:
+          type: integer
+          description: Номер заказа (используется в ссылке на оплату)
+
+    OrderSummary:
+      type: object
+      properties:
+        id:
+          type: integer
+        date:
+          type: string
+          format: date-time
+        summa:
+          type: number
+        type:
+          type: integer
+          description: "Тип документа: 11 = Заказ покупателя, 2 = Продажа"
+        status:
+          type: integer
+          description: ID статуса (0 = Новый)
+        status_name:
+          type: string
+
+    OrderDetail:
+      allOf:
+        - $ref: "#/components/schemas/OrderSummary"
+        - type: object
+          properties:
+            items:
+              type: array
+              items:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                    description: ID товара
+                  quant:
+                    type: number
+                  price:
+                    type: number
