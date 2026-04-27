@@ -84,9 +84,6 @@ switch ($method) {
     }
    }
   }
-  if (isset($input['date_delivery']) and strtotime($input['date_delivery'])<time()) {
-   throw new Exception('Дата доставки/самовывоза date_delivery не может быть меньше текущей даты');
-  }
 
   // данные клиента. До get_items, т.к. может иметь индивидуальные цены
   get_contr();
@@ -137,6 +134,7 @@ switch ($method) {
    $service_notify_msg='';
    if ($invoice_sql) {
     $sql_doc='INSERT INTO '.SCIF_PREFIX.'doc SET
+    `price_type`="'.SCIF_CATALOG_PRICE.'", 
     `date_insert`='.$time_x.', `doc_date`="'.date('Y-m-d H:i:s',$time_x).'",
     `summa`="'.$summa.'", `note`="'.$invoice_message.'"';
     // тип создаваемого в СКИФ документа: 11 - Заказ покупателя, 2 - Продажа

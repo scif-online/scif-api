@@ -230,13 +230,12 @@ paths:
             example:
               fio_from: "Иван Петров"
               phone_from: "89991234567"
-              date_delivery: "15.06.2025"
+              email_from: "test@mail.ru"
               address_delivery: "г. Москва, ул. Ленина, д. 1"
-              time_delivery: 10
               items:
-                "101":
-                  quant: 2
-                "102":
+                "32":
+                  quant: 1
+                "6":
                   quant: 5
       responses:
         "200":
@@ -540,9 +539,9 @@ components:
             type: number
             description: Количество
       example:
-        "101":
-          quant: 2
-        "102":
+        "32":
+          quant: 1
+        "6":
           quant: 5
 
     OrderAdd:
